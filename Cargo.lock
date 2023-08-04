@@ -884,6 +884,7 @@ dependencies = [
  "hex",
  "itertools",
  "num-bigint",
+ "num-integer",
  "plotters",
  "pprof",
  "rand",

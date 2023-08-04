@@ -22,6 +22,7 @@ halo2-ecc = { branch = "community-edition", default-features = false, features =
 ], git = "https://github.com/axiom-crypto/halo2-lib.git" }
 rand = "0.8"
 num-bigint = { version = "0.4", features = ["rand"] }
+num-integer = "0.1"
 hex = "0.4.3"
 itertools = "0.10.3"
 env_logger = "0.10.0"
