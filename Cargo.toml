@@ -30,3 +30,4 @@ sha1 = "0.10.5"
 pprof = { version = "0.11", features = ["criterion", "flamegraph"] }
 criterion = "0.4"
 criterion-macro = "0.4"
+approx = "0.5.0"
