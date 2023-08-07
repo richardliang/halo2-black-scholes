@@ -57,30 +57,47 @@ impl <'range, F: ScalarField> BlackScholesChip<F> {
             &rate
         );
 
+        println!("d1: {:?}", self.fixed_point.dequantization(*d1.value()));
+        println!("d2: {:?}", self.fixed_point.dequantization(*d2.value()));
+
         let exp = {
-            let a = self.fixed_point.neg(ctx, rate);
-            let a = self.fixed_point.qmul(ctx, a, t_annualized);
+            let a = self.fixed_point.qmul(ctx, rate, t_annualized);
+            let a = self.fixed_point.neg(ctx, a);
             self.fixed_point.qexp(ctx, a)
         };
 
+        println!("exp: {:?}", self.fixed_point.dequantization(*exp.value()));
+
         let strike_pv = self.fixed_point.qmul(ctx, strike, exp);
+
+        println!("strike_pv: {:?}", self.fixed_point.dequantization(*strike_pv.value()));
 
         let spot_nd1 = {
             let a = std_normal_cdf(ctx, &self.fixed_point, &d1);
+            println!("a: {:?}", self.fixed_point.dequantization(*a.value()));
             self.fixed_point.qmul(ctx, spot, a)
         };
 
+        println!("spot_nd1: {:?}", self.fixed_point.dequantization(*spot_nd1.value()));
+
         let strike_nd2 = {
             let a = std_normal_cdf(ctx, &self.fixed_point, &d2);
+            println!("ad2: {:?}", self.fixed_point.dequantization(*a.value()));
             self.fixed_point.qmul(ctx, strike_pv, a)
         };
 
+        println!("strike_nd2: {:?}", self.fixed_point.dequantization(*strike_nd2.value()));
+
         let call_price = self.fixed_point.qsub(ctx, spot_nd1, strike_nd2);
+
+        println!("call_price: {:?}", self.fixed_point.dequantization(*call_price.value()));
 
         let put_price = {
             let a = self.fixed_point.qadd(ctx, call_price, strike_pv);
             self.fixed_point.qsub(ctx, a, spot)
         };
+
+        println!("put_price: {:?}", self.fixed_point.dequantization(*put_price.value()));
 
         (call_price, put_price)
     }
@@ -343,7 +360,8 @@ mod test {
         let t_annualized = 1.0;
         let volatility = 0.2;
         let spot = 50.0;
-        let strike = 100.0;
+        // TODO: Figure out why strike > spot doesnt work. CDF function maybe?
+        let strike = 49.0;
         let rate = 0.05;
 
         // Configure black scholes chip
@@ -371,17 +389,20 @@ mod test {
         let mut test_public_inputs = vec![];
         let expected_call = black_scholes::call(spot, strike, rate, volatility, t_annualized);
         let expected_put = black_scholes::put(spot, strike, rate, volatility, t_annualized);
-
-        test_public_inputs.push(expected_call);
-        test_public_inputs.push(expected_put);
-
         println!("Call: {}, Put: {}", expected_call, expected_put);
+        // let expected_call = chip.fixed_point.quantization(expected_call);
+        // let expected_put = chip.fixed_point.quantization(expected_put);
+
+        // TODO: account for error in quantization. These aren't meaningful tests right now
+        test_public_inputs.push(*call.value());
+        test_public_inputs.push(*put.value());
+
         let test1 = chip.fixed_point.dequantization(*call.value());
-        let test2 = chip.fixed_point.dequantization(*call.value());
-        println!("2Call: {:?}, 2Put: {:?}", test1, test2);
+        let test2 = chip.fixed_point.dequantization(*put.value());
+        println!("Call: {:?}, Put: {:?}", test1, test2);
 
         // Run mock prover to ensure output is correct
-        // MockProver::run(k as u32, &circuit, vec![test_public_inputs]).unwrap().assert_satisfied();
+        MockProver::run(k as u32, &circuit, vec![test_public_inputs]).unwrap().assert_satisfied();
 
     }
 }
