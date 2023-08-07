@@ -214,15 +214,7 @@ pub fn d1d2<F: ScalarField> (
 mod test {
     use super::*;
     use halo2_base::gates::builder::{GateThreadBuilder, RangeWithInstanceCircuitBuilder};
-    use halo2_base::halo2_proofs::halo2curves::CurveAffine;
     use halo2_base::halo2_proofs::{halo2curves::bn256::Fr, dev::MockProver};
-    use halo2_base::QuantumCell::{Existing, Witness, Constant};
-    use halo2_base::{
-        gates::{GateInstructions, GateChip, RangeChip, RangeInstructions},
-        utils::{ScalarField},
-        AssignedValue, Context,
-    };
-    use itertools::Itertools;
 
     #[test]
     fn test_std_normal_cdf() {
@@ -344,10 +336,13 @@ mod test {
 
     #[test]
     fn test_black_scholes() {
-        let k = 9;
+        // Uncomment to enable RUST_LOG
+        // env_logger::init();
+
+        let k = 16;
         // Configure builder
         let mut builder = GateThreadBuilder::<Fr>::mock();
-        let lookup_bits = k - 1;
+        let lookup_bits = 8;
         // NOTE: Need to set var to load lookup table
         std::env::set_var("LOOKUP_BITS", lookup_bits.to_string());
         
@@ -376,7 +371,7 @@ mod test {
 
         // Minimum rows is the number of rows used for blinding factors
         // This depends on the circuit itself, but we can guess the number and change it if something breaks (default 9 usually works)
-        builder.config(k, Some(13));
+        builder.config(k, Some(9));
         // Create mock circuit
         let circuit = RangeWithInstanceCircuitBuilder::mock(builder, instances);
 
@@ -400,5 +395,60 @@ mod test {
 
         // Run mock prover to ensure output is correct
         MockProver::run(k as u32, &circuit, vec![test_public_inputs]).unwrap().assert_satisfied();
+    }
+
+    #[cfg(feature = "dev-graph")]
+    #[test]
+    fn plot_black_scholes() {
+        use plotters::prelude::*;
+
+        // Uncomment to enable RUST_LOG
+        env_logger::init();
+
+        let k = 16;
+        // Configure builder
+        let mut builder = GateThreadBuilder::<Fr>::mock();
+        let lookup_bits = 12;
+        // NOTE: Need to set var to load lookup table
+        std::env::set_var("LOOKUP_BITS", lookup_bits.to_string());
+        
+        // Circuit inputs
+        let t_annualized = 1.0;
+        let volatility = 0.2;
+        let spot = 50.0;
+        let strike = 100.0;
+        let rate = 0.05;
+
+        // Configure black scholes chip
+        let chip = BlackScholesChip::<Fr>::new(lookup_bits);
+        let (call, put) = chip.black_scholes(
+            builder.main(0),
+            t_annualized,
+            volatility,
+            spot,
+            strike,
+            rate
+        );
+
+        // Assign public instances to circuit
+        let mut instances = vec![];
+        instances.push(call);
+        instances.push(put);
+
+        // Minimum rows is the number of rows used for blinding factors
+        // This depends on the circuit itself, but we can guess the number and change it if something breaks (default 9 usually works)
+        builder.config(k, Some(9));
+        // Create mock circuit
+        let circuit = RangeWithInstanceCircuitBuilder::mock(builder, instances);
+
+        // Plot layout
+        let root = BitMapBackend::new("bs_options_price.png", (1024, 1024)).into_drawing_area();
+        root.fill(&WHITE).unwrap();
+        let root = root.titled("BS Option Price Circuit Layout", ("sans-serif", 60)).unwrap();
+        
+        halo2_base::halo2_proofs::dev::CircuitLayout::default()
+            // The first argument is the size parameter for the circuit.
+            .render((k) as u32, &circuit, &root)
+            .unwrap();
     }
 }
