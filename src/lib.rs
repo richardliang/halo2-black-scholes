@@ -21,6 +21,7 @@ pub struct BlackScholesChip<F: ScalarField> {
     _marker: PhantomData<F>,
 }
 
+// TODO: Implement greeks
 impl <'range, F: ScalarField> BlackScholesChip<F> {
     pub fn new(lookup_bits: usize) -> Self {
         let fixed_point: FixedPointChip<F, 63> = FixedPointChip::<F, 63>::default(lookup_bits);
@@ -57,47 +58,30 @@ impl <'range, F: ScalarField> BlackScholesChip<F> {
             &rate
         );
 
-        println!("d1: {:?}", self.fixed_point.dequantization(*d1.value()));
-        println!("d2: {:?}", self.fixed_point.dequantization(*d2.value()));
-
         let exp = {
             let a = self.fixed_point.qmul(ctx, rate, t_annualized);
             let a = self.fixed_point.neg(ctx, a);
             self.fixed_point.qexp(ctx, a)
         };
 
-        println!("exp: {:?}", self.fixed_point.dequantization(*exp.value()));
-
         let strike_pv = self.fixed_point.qmul(ctx, strike, exp);
-
-        println!("strike_pv: {:?}", self.fixed_point.dequantization(*strike_pv.value()));
 
         let spot_nd1 = {
             let a = std_normal_cdf(ctx, &self.fixed_point, &d1);
-            println!("a: {:?}", self.fixed_point.dequantization(*a.value()));
             self.fixed_point.qmul(ctx, spot, a)
         };
 
-        println!("spot_nd1: {:?}", self.fixed_point.dequantization(*spot_nd1.value()));
-
         let strike_nd2 = {
             let a = std_normal_cdf(ctx, &self.fixed_point, &d2);
-            println!("ad2: {:?}", self.fixed_point.dequantization(*a.value()));
             self.fixed_point.qmul(ctx, strike_pv, a)
         };
 
-        println!("strike_nd2: {:?}", self.fixed_point.dequantization(*strike_nd2.value()));
-
         let call_price = self.fixed_point.qsub(ctx, spot_nd1, strike_nd2);
-
-        println!("call_price: {:?}", self.fixed_point.dequantization(*call_price.value()));
 
         let put_price = {
             let a = self.fixed_point.qadd(ctx, call_price, strike_pv);
             self.fixed_point.qsub(ctx, a, spot)
         };
-
-        println!("put_price: {:?}", self.fixed_point.dequantization(*put_price.value()));
 
         (call_price, put_price)
     }
@@ -108,13 +92,15 @@ pub fn std_normal<F: ScalarField>(
     fixed_point: &FixedPointChip<F, 63>,
     x: &AssignedValue<F>
 ) -> AssignedValue<F> {
+    let two = ctx.load_constant(fixed_point.quantization(2.0));
+
     // sqrt(2*pi).
-    let sqrt_two_pi = QuantumCell::Constant(fixed_point.quantization(PI * 2.0));
+    let sqrt_two_pi = ctx.load_constant(fixed_point.quantization(PI * 2.0));
 
     // e^(-x^2/2)
     let x_squared = fixed_point.qmul(ctx, *x, *x);
     let neg_x_squared = fixed_point.neg(ctx, x_squared);
-    let neg_x_squared_div_two = fixed_point.qdiv(ctx, neg_x_squared, QuantumCell::Constant(F::from(2)));
+    let neg_x_squared_div_two = fixed_point.qdiv(ctx, neg_x_squared, two);
     let exp = fixed_point.qexp(ctx, neg_x_squared_div_two);
 
     // e^(-x^2/2) / sqrt(2*pi)
@@ -127,23 +113,17 @@ pub fn std_normal_cdf<F: ScalarField>(
     fixed_point: &FixedPointChip<F, 63>,
     x: &AssignedValue<F>
 ) -> AssignedValue<F> {
-    if fixed_point.dequantization(*x.value()) < -5.0 {
-        return ctx.load_constant(fixed_point.quantization(0.0));
-    } else if fixed_point.dequantization(*x.value()) > 5.0 {
-        return ctx.load_constant(fixed_point.quantization(1.0));
-    }
-
     // Load magic numbers
-    let b1 = QuantumCell::Constant(fixed_point.quantization(0.319381530));
-    let b2 = QuantumCell::Constant(fixed_point.quantization(-0.356563782));
-    let b3 = QuantumCell::Constant(fixed_point.quantization(1.781477937));
-    let b4 = QuantumCell::Constant(fixed_point.quantization(-1.821255978));
-    let b5 = QuantumCell::Constant(fixed_point.quantization(1.330274429));
-    let p = QuantumCell::Constant(fixed_point.quantization(0.2316419));
-    let c2 = QuantumCell::Constant(fixed_point.quantization(0.3989423));
-    // Constants
-    let one = QuantumCell::Constant(fixed_point.quantization(1.0));
-    let two = QuantumCell::Constant(fixed_point.quantization(2.0));
+    let b1 = ctx.load_constant(fixed_point.quantization(0.319381530));
+    let b2 = ctx.load_constant(fixed_point.quantization(-0.356563782));
+    let b3 = ctx.load_constant(fixed_point.quantization(1.781477937));
+    let b4 = ctx.load_constant(fixed_point.quantization(-1.821255978));
+    let b5 = ctx.load_constant(fixed_point.quantization(1.330274429));
+    let p = ctx.load_constant(fixed_point.quantization(0.2316419));
+    let c2 = ctx.load_constant(fixed_point.quantization(0.3989423));
+
+    let one = ctx.load_constant(fixed_point.quantization(1.0));
+    let two = ctx.load_constant(fixed_point.quantization(2.0));
     
     // abs(x)
     let abs_x = fixed_point.qabs(ctx, *x);
@@ -174,11 +154,26 @@ pub fn std_normal_cdf<F: ScalarField>(
         let res = fixed_point.qmul(ctx, res, b);
         fixed_point.qsub(ctx, one, res)
     };
-    if fixed_point.dequantization(*x.value()) < -5.0 {
-        fixed_point.qsub(ctx, one, n)
-    } else {
-        n
-    }
+
+    let neg_five = ctx.load_constant(fixed_point.quantization(-5.0));
+    let zero = ctx.load_constant(fixed_point.quantization(0.0));
+    let five = ctx.load_constant(fixed_point.quantization(5.0));
+    let num_bits = 126; // PRECISION_BITS * 2
+
+    // Check if negative
+    let lt_zero = fixed_point.range_gate().is_less_than(ctx, *x, zero, num_bits);
+    let result = {
+        let a = fixed_point.qsub(ctx, one, n);
+        fixed_point.range_gate().gate().select(ctx, a, n, lt_zero)
+    };
+
+    // Check less than -5.0
+    let lt_neg_five = fixed_point.range_gate().is_less_than(ctx, *x, neg_five, num_bits);
+    let result = fixed_point.range_gate().gate().select(ctx, QuantumCell::Constant(fixed_point.quantization(0.0)), result, lt_neg_five);
+
+    // Check greater than 5.0
+    let gt_five = fixed_point.range_gate().is_less_than(ctx, five, *x, num_bits);
+    fixed_point.range_gate().gate().select(ctx, QuantumCell::Constant(fixed_point.quantization(1.0)), result, gt_five)
 }
 
 // Returns the internal Black-Scholes coefficients.
@@ -191,7 +186,7 @@ pub fn d1d2<F: ScalarField> (
     strike: &AssignedValue<F>,
     rate: &AssignedValue<F>
 ) -> (AssignedValue<F>, AssignedValue<F>) {
-    let two = QuantumCell::Constant(fixed_point.quantization(2.0));
+    let two = ctx.load_constant(fixed_point.quantization(2.0));
     let t_annualized_sqrt = fixed_point.qsqrt(ctx, *t_annualized);
     // volatility * sqrt(t_annualized)
     let denominator = fixed_point.qmul(ctx, *volatility, t_annualized_sqrt);
@@ -265,7 +260,7 @@ mod test {
         );
         let result = fixed_point.dequantization(*result.value());
         // Same even if negative
-        let expected = 0.8413447;
+        let expected = 0.15865526;
         let err = 1e-7;
         assert_relative_eq!(result, expected, max_relative = err);
 
@@ -360,8 +355,7 @@ mod test {
         let t_annualized = 1.0;
         let volatility = 0.2;
         let spot = 50.0;
-        // TODO: Figure out why strike > spot doesnt work. CDF function maybe?
-        let strike = 49.0;
+        let strike = 100.0;
         let rate = 0.05;
 
         // Configure black scholes chip
@@ -389,20 +383,22 @@ mod test {
         let mut test_public_inputs = vec![];
         let expected_call = black_scholes::call(spot, strike, rate, volatility, t_annualized);
         let expected_put = black_scholes::put(spot, strike, rate, volatility, t_annualized);
-        println!("Call: {}, Put: {}", expected_call, expected_put);
-        // let expected_call = chip.fixed_point.quantization(expected_call);
-        // let expected_put = chip.fixed_point.quantization(expected_put);
-
-        // TODO: account for error in quantization. These aren't meaningful tests right now
+        
+        // TODO: improve the error tolerance in circuit
+        // One way is to calculate put first and use put-call parity to calculate call price in certain scenarios
+        let err = 1e-3;
+        assert_relative_eq!(chip.fixed_point.dequantization(*call.value()), expected_call, max_relative = err);
+        assert_relative_eq!(chip.fixed_point.dequantization(*put.value()), expected_put, max_relative = err);
+        
         test_public_inputs.push(*call.value());
         test_public_inputs.push(*put.value());
-
-        let test1 = chip.fixed_point.dequantization(*call.value());
-        let test2 = chip.fixed_point.dequantization(*put.value());
-        println!("Call: {:?}, Put: {:?}", test1, test2);
+        
+        // let result_call = chip.fixed_point.dequantization(*call.value());
+        // let result_put = chip.fixed_point.dequantization(*put.value());
+        // println!("Call: {:?}, Put: {:?}", result_call, result_put);
+        // println!("Expected Call: {}, Expected Put: {}", expected_call, expected_put);
 
         // Run mock prover to ensure output is correct
         MockProver::run(k as u32, &circuit, vec![test_public_inputs]).unwrap().assert_satisfied();
-
     }
 }
