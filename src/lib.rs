@@ -33,7 +33,7 @@ impl <'range, F: ScalarField> BlackScholesChip<F> {
         }
     }
 
-    pub fn black_scholes(
+    pub fn option_prices(
         &self,
         ctx: &mut Context<F>,
         t_annualized: f64, 
@@ -49,7 +49,7 @@ impl <'range, F: ScalarField> BlackScholesChip<F> {
         let strike = ctx.load_witness(self.fixed_point.quantization(strike));
         let rate = ctx.load_witness(self.fixed_point.quantization(rate));
 
-        let (d1, d2) = d1d2(
+        let (d1, d2) = calc_d1_d2(
             ctx, &self.fixed_point,
             &t_annualized,
             &volatility,
@@ -67,12 +67,12 @@ impl <'range, F: ScalarField> BlackScholesChip<F> {
         let strike_pv = self.fixed_point.qmul(ctx, strike, exp);
 
         let spot_nd1 = {
-            let a = std_normal_cdf(ctx, &self.fixed_point, &d1);
+            let a = cdf_normal(ctx, &self.fixed_point, &d1);
             self.fixed_point.qmul(ctx, spot, a)
         };
 
         let strike_nd2 = {
-            let a = std_normal_cdf(ctx, &self.fixed_point, &d2);
+            let a = cdf_normal(ctx, &self.fixed_point, &d2);
             self.fixed_point.qmul(ctx, strike_pv, a)
         };
 
@@ -85,9 +85,35 @@ impl <'range, F: ScalarField> BlackScholesChip<F> {
 
         (call_price, put_price)
     }
+
+    pub fn delta(
+        &self,
+        ctx: &mut Context<F>,
+        t_annualized: &AssignedValue<F>,
+        volatility: &AssignedValue<F>,
+        spot: &AssignedValue<F>,
+        strike: &AssignedValue<F>,
+        rate: &AssignedValue<F>
+    ) -> (AssignedValue<F>, AssignedValue<F>) {
+        let (d1, _d2) = calc_d1_d2(
+            ctx,
+            &self.fixed_point,
+            t_annualized,
+            volatility,
+            spot,
+            strike,
+            rate
+        );
+        let one = ctx.load_constant(self.fixed_point.quantization(1.0));
+
+        let call_delta = cdf_normal(ctx, &self.fixed_point, &d1);
+        let put_delta = self.fixed_point.qsub(ctx, call_delta, one);
+
+        (call_delta, put_delta)
+    }
 }
 
-pub fn std_normal<F: ScalarField>(
+pub fn pdf_normal<F: ScalarField>(
     ctx: &mut Context<F>,
     fixed_point: &FixedPointChip<F, 63>,
     x: &AssignedValue<F>
@@ -108,7 +134,7 @@ pub fn std_normal<F: ScalarField>(
 }
 
 // Use Abramowitz and Stegun approximation
-pub fn std_normal_cdf<F: ScalarField>(
+pub fn cdf_normal<F: ScalarField>(
     ctx: &mut Context<F>,
     fixed_point: &FixedPointChip<F, 63>,
     x: &AssignedValue<F>
@@ -177,7 +203,7 @@ pub fn std_normal_cdf<F: ScalarField>(
 }
 
 // Returns the internal Black-Scholes coefficients.
-pub fn d1d2<F: ScalarField> (
+pub fn calc_d1_d2<F: ScalarField> (
     ctx: &mut Context<F>,
     fixed_point: &FixedPointChip<F, 63>,
     t_annualized: &AssignedValue<F>,
@@ -217,7 +243,7 @@ mod test {
     use halo2_base::halo2_proofs::{halo2curves::bn256::Fr, dev::MockProver};
 
     #[test]
-    fn test_std_normal_cdf() {
+    fn test_cdf_normal() {
         let k = 9;
         // Configure builder
         let mut builder = GateThreadBuilder::<Fr>::mock();
@@ -231,7 +257,7 @@ mod test {
         // Test 1.0
         let x = 1.0;
         let x = ctx.load_witness(fixed_point.quantization(x));
-        let result = std_normal_cdf(
+        let result = cdf_normal(
             ctx,
             &fixed_point,
             &x,
@@ -245,7 +271,7 @@ mod test {
         // Test -1.0
         let x = -1.0;
         let x = ctx.load_witness(fixed_point.quantization(x));
-        let result = std_normal_cdf(
+        let result = cdf_normal(
             ctx,
             &fixed_point,
             &x,
@@ -259,7 +285,7 @@ mod test {
         // Test 6.0
         let x = 6.0;
         let x = ctx.load_witness(fixed_point.quantization(x));
-        let result = std_normal_cdf(
+        let result = cdf_normal(
             ctx,
             &fixed_point,
             &x,
@@ -272,7 +298,7 @@ mod test {
         // Test -6.0
         let x = -6.0;
         let x = ctx.load_witness(fixed_point.quantization(x));
-        let result = std_normal_cdf(
+        let result = cdf_normal(
             ctx,
             &fixed_point,
             &x,
@@ -284,7 +310,7 @@ mod test {
     }
 
     #[test]
-    fn test_d1d2() {
+    fn test_calc_d1_d2() {
         let k = 9;
         // Configure builder
         let mut builder = GateThreadBuilder::<Fr>::mock();
@@ -317,7 +343,7 @@ mod test {
         let strike = ctx.load_witness(fixed_point.quantization(strike));
         let rate = ctx.load_witness(fixed_point.quantization(rate));
 
-        let result = d1d2(
+        let result = calc_d1_d2(
             ctx,
             &fixed_point,
             &t_annualized,
@@ -335,7 +361,7 @@ mod test {
     }
 
     #[test]
-    fn test_black_scholes() {
+    fn test_option_prices() {
         // Uncomment to enable RUST_LOG
         // env_logger::init();
 
@@ -355,7 +381,7 @@ mod test {
 
         // Configure black scholes chip
         let chip = BlackScholesChip::<Fr>::new(lookup_bits);
-        let (call, put) = chip.black_scholes(
+        let (call, put) = chip.option_prices(
             builder.main(0),
             t_annualized,
             volatility,
@@ -399,7 +425,7 @@ mod test {
 
     #[cfg(feature = "dev-graph")]
     #[test]
-    fn plot_black_scholes() {
+    fn plot_option_prices() {
         use plotters::prelude::*;
 
         // Uncomment to enable RUST_LOG
@@ -421,7 +447,7 @@ mod test {
 
         // Configure black scholes chip
         let chip = BlackScholesChip::<Fr>::new(lookup_bits);
-        let (call, put) = chip.black_scholes(
+        let (call, put) = chip.option_prices(
             builder.main(0),
             t_annualized,
             volatility,
