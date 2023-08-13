@@ -1,4 +1,4 @@
-use halo2_base::QuantumCell;
+use halo2_base::{self, QuantumCell::Constant};
 use halo2_base::{
     gates::{GateInstructions, GateChip, RangeChip, RangeInstructions},
     utils::{ScalarField},
@@ -111,6 +111,173 @@ impl <'range, F: ScalarField> BlackScholesChip<F> {
 
         (call_delta, put_delta)
     }
+
+    pub fn gamma(
+        &self,
+        ctx: &mut Context<F>,
+        t_annualized: &AssignedValue<F>,
+        volatility: &AssignedValue<F>,
+        spot: &AssignedValue<F>,
+        strike: &AssignedValue<F>,
+        rate: &AssignedValue<F>
+    ) -> AssignedValue<F> {
+        let (d1, _d2) = calc_d1_d2(
+            ctx,
+            &self.fixed_point,
+            t_annualized,
+            volatility,
+            spot,
+            strike,
+            rate
+        );
+
+        let pdf_d1 = pdf_normal(ctx, &self.fixed_point, &d1);
+
+        let denom = {
+            let a = self.fixed_point.qsqrt(ctx, *t_annualized);
+            let a = self.fixed_point.qmul(ctx, a, *volatility);
+            self.fixed_point.qmul(ctx, a, *spot)
+        };
+
+        self.fixed_point.qdiv(ctx, pdf_d1, denom)
+    }
+
+    pub fn vega(
+        &self,
+        ctx: &mut Context<F>,
+        t_annualized: &AssignedValue<F>,
+        volatility: &AssignedValue<F>,
+        spot: &AssignedValue<F>,
+        strike: &AssignedValue<F>,
+        rate: &AssignedValue<F>
+    ) -> AssignedValue<F> {
+        let (d1, _d2) = calc_d1_d2(
+            ctx,
+            &self.fixed_point,
+            t_annualized,
+            volatility,
+            spot,
+            strike,
+            rate
+        );
+
+        let pdf_d1 = pdf_normal(ctx, &self.fixed_point, &d1);
+
+        let numer = {
+            let a = self.fixed_point.qsqrt(ctx, *t_annualized);
+            let a = self.fixed_point.qmul(ctx, a, *spot);
+            self.fixed_point.qmul(ctx, a, pdf_d1)
+        };
+
+        self.fixed_point.qdiv(ctx, numer, Constant(self.fixed_point.quantization(100.0)))
+    }
+
+    pub fn rho(
+        &self,
+        ctx: &mut Context<F>,
+        t_annualized: &AssignedValue<F>,
+        volatility: &AssignedValue<F>,
+        spot: &AssignedValue<F>,
+        strike: &AssignedValue<F>,
+        rate: &AssignedValue<F>
+    ) -> (AssignedValue<F>, AssignedValue<F>) {
+        let (_d1, d2) = calc_d1_d2(
+            ctx,
+            &self.fixed_point,
+            t_annualized,
+            volatility,
+            spot,
+            strike,
+            rate
+        );
+
+        let strike_t = self.fixed_point.qmul(ctx, *strike, *t_annualized);
+
+        let r_t = self.fixed_point.qmul(ctx, *rate, *t_annualized);
+        let neg_r_t = self.fixed_point.neg(ctx, r_t);
+        let exp_r_t = self.fixed_point.qexp(ctx, neg_r_t);
+
+        let d2_cdf = cdf_normal(ctx, &self.fixed_point, &d2);
+        let d2_neg = self.fixed_point.neg(ctx, d2);
+        let d2_cdf_neg = cdf_normal(ctx, &self.fixed_point, &d2_neg);
+        let strike_exp_t = self.fixed_point.qmul(ctx, strike_t, exp_r_t);
+
+        let call_rho = {
+            let a = self.fixed_point.qmul(ctx, d2_cdf, strike_exp_t);
+            self.fixed_point.qdiv(ctx, a, Constant(self.fixed_point.quantization(100.0)))
+        };
+
+        let put_rho = {
+            let a = self.fixed_point.qmul(ctx, d2_cdf_neg, strike_exp_t);
+            self.fixed_point.qdiv(ctx, a, Constant(self.fixed_point.quantization(-100.0)))
+        };
+
+        (call_rho, put_rho)
+    }
+
+    pub fn theta(
+        &self,
+        ctx: &mut Context<F>,
+        t_annualized: &AssignedValue<F>,
+        volatility: &AssignedValue<F>,
+        spot: &AssignedValue<F>,
+        strike: &AssignedValue<F>,
+        rate: &AssignedValue<F>
+    ) -> (AssignedValue<F>, AssignedValue<F>) {
+        let (d1, d2) = calc_d1_d2(
+            ctx,
+            &self.fixed_point,
+            t_annualized,
+            volatility,
+            spot,
+            strike,
+            rate
+        );
+
+        let strike_rate = self.fixed_point.qmul(ctx, *strike, *rate);
+
+        let r_t = self.fixed_point.qmul(ctx, *rate, *t_annualized);
+        let neg_r_t = self.fixed_point.neg(ctx, r_t);
+        let exp_r_t = self.fixed_point.qexp(ctx, neg_r_t);
+        
+        let d2_cdf = cdf_normal(ctx, &self.fixed_point, &d2);
+        
+        let d2_neg = self.fixed_point.neg(ctx, d2);
+        let d2_cdf_neg = cdf_normal(ctx, &self.fixed_point, &d2_neg);
+
+        let common = {
+            let denom = self.fixed_point.qsqrt(ctx, *t_annualized);
+            let denom = self.fixed_point.qmul(ctx, denom, Constant(self.fixed_point.quantization(2.0)));
+
+            let numer = self.fixed_point.qmul(ctx, *spot, *volatility);
+
+            let a = self.fixed_point.qdiv(ctx, numer, denom);
+
+            let d1_pdf = pdf_normal(ctx, &self.fixed_point, &d1);
+
+            self.fixed_point.qmul(ctx, a, d1_pdf)
+        };
+
+        let call_theta = {
+            let a = self.fixed_point.qmul(ctx, strike_rate, exp_r_t);
+            let a = self.fixed_point.qmul(ctx, a, d2_cdf);
+
+            let a = self.fixed_point.qadd(ctx, a, common);
+            let a = self.fixed_point.neg(ctx, a);
+            self.fixed_point.qdiv(ctx, a, Constant(self.fixed_point.quantization(365.0)))
+        };
+
+        let put_theta = {
+            let a = self.fixed_point.qmul(ctx, strike_rate, exp_r_t);
+            let a = self.fixed_point.qmul(ctx, d2_cdf_neg, a);
+
+            let a = self.fixed_point.qsub(ctx, a, common);
+
+            self.fixed_point.qdiv(ctx, a, Constant(self.fixed_point.quantization(365.0)))
+        };
+
+        (call_theta, put_theta)
+    }
 }
 
 pub fn pdf_normal<F: ScalarField>(
@@ -195,11 +362,11 @@ pub fn cdf_normal<F: ScalarField>(
 
     // Check less than -5.0
     let lt_neg_five = fixed_point.range_gate().is_less_than(ctx, *x, neg_five, num_bits);
-    let result = fixed_point.range_gate().gate().select(ctx, QuantumCell::Constant(fixed_point.quantization(0.0)), result, lt_neg_five);
+    let result = fixed_point.range_gate().gate().select(ctx, Constant(fixed_point.quantization(0.0)), result, lt_neg_five);
 
     // Check greater than 5.0
     let gt_five = fixed_point.range_gate().is_less_than(ctx, five, *x, num_bits);
-    fixed_point.range_gate().gate().select(ctx, QuantumCell::Constant(fixed_point.quantization(1.0)), result, gt_five)
+    fixed_point.range_gate().gate().select(ctx, Constant(fixed_point.quantization(1.0)), result, gt_five)
 }
 
 // Returns the internal Black-Scholes coefficients.
