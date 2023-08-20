@@ -953,8 +953,8 @@ mod test {
         // TODO: improve the error tolerance in circuit
         // One way is to calculate put first and use put-call parity to calculate call price in certain scenarios
         let err = 1e-3;
-        // assert_relative_eq!(chip.fixed_point.dequantization(*call_theta.value()), expected_call_theta, max_relative = err);
-        // assert_relative_eq!(chip.fixed_point.dequantization(*put_theta.value()), expected_put_theta, max_relative = err);
+        assert_relative_eq!(chip.fixed_point.dequantization(*call_theta.value()), expected_call_theta, max_relative = err);
+        assert_relative_eq!(chip.fixed_point.dequantization(*put_theta.value()), expected_put_theta, max_relative = err);
         
         test_public_inputs.push(*call_theta.value());
         test_public_inputs.push(*put_theta.value());
