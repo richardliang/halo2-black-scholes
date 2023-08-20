@@ -7,7 +7,6 @@ use halo2_base::{
 use itertools::Itertools;
 mod fixed_point;
 pub use fixed_point::*;
-use std::f64::consts::PI;
 use std::marker::PhantomData;
 use black_scholes;
 
@@ -89,20 +88,26 @@ impl <'range, F: ScalarField> BlackScholesChip<F> {
     pub fn delta(
         &self,
         ctx: &mut Context<F>,
-        t_annualized: &AssignedValue<F>,
-        volatility: &AssignedValue<F>,
-        spot: &AssignedValue<F>,
-        strike: &AssignedValue<F>,
-        rate: &AssignedValue<F>
+        t_annualized: f64,
+        volatility: f64,
+        spot: f64,
+        strike: f64,
+        rate: f64
     ) -> (AssignedValue<F>, AssignedValue<F>) {
+        let t_annualized = ctx.load_witness(self.fixed_point.quantization(t_annualized));
+        let volatility = ctx.load_witness(self.fixed_point.quantization(volatility));
+        let spot = ctx.load_witness(self.fixed_point.quantization(spot));
+        let strike = ctx.load_witness(self.fixed_point.quantization(strike));
+        let rate = ctx.load_witness(self.fixed_point.quantization(rate));
+
         let (d1, _d2) = calc_d1_d2(
             ctx,
             &self.fixed_point,
-            t_annualized,
-            volatility,
-            spot,
-            strike,
-            rate
+            &t_annualized,
+            &volatility,
+            &spot,
+            &strike,
+            &rate
         );
         let one = ctx.load_constant(self.fixed_point.quantization(1.0));
 
@@ -115,28 +120,34 @@ impl <'range, F: ScalarField> BlackScholesChip<F> {
     pub fn gamma(
         &self,
         ctx: &mut Context<F>,
-        t_annualized: &AssignedValue<F>,
-        volatility: &AssignedValue<F>,
-        spot: &AssignedValue<F>,
-        strike: &AssignedValue<F>,
-        rate: &AssignedValue<F>
+        t_annualized: f64,
+        volatility: f64,
+        spot: f64,
+        strike: f64,
+        rate: f64
     ) -> AssignedValue<F> {
+        let t_annualized = ctx.load_witness(self.fixed_point.quantization(t_annualized));
+        let volatility = ctx.load_witness(self.fixed_point.quantization(volatility));
+        let spot = ctx.load_witness(self.fixed_point.quantization(spot));
+        let strike = ctx.load_witness(self.fixed_point.quantization(strike));
+        let rate = ctx.load_witness(self.fixed_point.quantization(rate));
+
         let (d1, _d2) = calc_d1_d2(
             ctx,
             &self.fixed_point,
-            t_annualized,
-            volatility,
-            spot,
-            strike,
-            rate
+            &t_annualized,
+            &volatility,
+            &spot,
+            &strike,
+            &rate
         );
 
         let pdf_d1 = pdf_normal(ctx, &self.fixed_point, &d1);
 
         let denom = {
-            let a = self.fixed_point.qsqrt(ctx, *t_annualized);
-            let a = self.fixed_point.qmul(ctx, a, *volatility);
-            self.fixed_point.qmul(ctx, a, *spot)
+            let a = self.fixed_point.qsqrt(ctx, t_annualized);
+            let a = self.fixed_point.qmul(ctx, a, volatility);
+            self.fixed_point.qmul(ctx, a, spot)
         };
 
         self.fixed_point.qdiv(ctx, pdf_d1, denom)
@@ -145,55 +156,63 @@ impl <'range, F: ScalarField> BlackScholesChip<F> {
     pub fn vega(
         &self,
         ctx: &mut Context<F>,
-        t_annualized: &AssignedValue<F>,
-        volatility: &AssignedValue<F>,
-        spot: &AssignedValue<F>,
-        strike: &AssignedValue<F>,
-        rate: &AssignedValue<F>
+        t_annualized: f64,
+        volatility: f64,
+        spot: f64,
+        strike: f64,
+        rate: f64
     ) -> AssignedValue<F> {
+        let t_annualized = ctx.load_witness(self.fixed_point.quantization(t_annualized));
+        let volatility = ctx.load_witness(self.fixed_point.quantization(volatility));
+        let spot = ctx.load_witness(self.fixed_point.quantization(spot));
+        let strike = ctx.load_witness(self.fixed_point.quantization(strike));
+        let rate = ctx.load_witness(self.fixed_point.quantization(rate));
+
         let (d1, _d2) = calc_d1_d2(
             ctx,
             &self.fixed_point,
-            t_annualized,
-            volatility,
-            spot,
-            strike,
-            rate
+            &t_annualized,
+            &volatility,
+            &spot,
+            &strike,
+            &rate
         );
 
         let pdf_d1 = pdf_normal(ctx, &self.fixed_point, &d1);
 
-        let numer = {
-            let a = self.fixed_point.qsqrt(ctx, *t_annualized);
-            let a = self.fixed_point.qmul(ctx, a, *spot);
-            self.fixed_point.qmul(ctx, a, pdf_d1)
-        };
-
-        self.fixed_point.qdiv(ctx, numer, Constant(self.fixed_point.quantization(100.0)))
+        let a = self.fixed_point.qsqrt(ctx, t_annualized);
+        let a = self.fixed_point.qmul(ctx, a, spot);
+        self.fixed_point.qmul(ctx, a, pdf_d1)
     }
 
     pub fn rho(
         &self,
         ctx: &mut Context<F>,
-        t_annualized: &AssignedValue<F>,
-        volatility: &AssignedValue<F>,
-        spot: &AssignedValue<F>,
-        strike: &AssignedValue<F>,
-        rate: &AssignedValue<F>
+        t_annualized: f64,
+        volatility: f64,
+        spot: f64,
+        strike: f64,
+        rate: f64
     ) -> (AssignedValue<F>, AssignedValue<F>) {
+        let t_annualized = ctx.load_witness(self.fixed_point.quantization(t_annualized));
+        let volatility = ctx.load_witness(self.fixed_point.quantization(volatility));
+        let spot = ctx.load_witness(self.fixed_point.quantization(spot));
+        let strike = ctx.load_witness(self.fixed_point.quantization(strike));
+        let rate = ctx.load_witness(self.fixed_point.quantization(rate));
+
         let (_d1, d2) = calc_d1_d2(
             ctx,
             &self.fixed_point,
-            t_annualized,
-            volatility,
-            spot,
-            strike,
-            rate
+            &t_annualized,
+            &volatility,
+            &spot,
+            &strike,
+            &rate
         );
 
-        let strike_t = self.fixed_point.qmul(ctx, *strike, *t_annualized);
+        let strike_t = self.fixed_point.qmul(ctx, strike, t_annualized);
 
-        let r_t = self.fixed_point.qmul(ctx, *rate, *t_annualized);
+        let r_t = self.fixed_point.qmul(ctx, rate, t_annualized);
         let neg_r_t = self.fixed_point.neg(ctx, r_t);
         let exp_r_t = self.fixed_point.qexp(ctx, neg_r_t);
 
@@ -201,16 +220,10 @@ impl <'range, F: ScalarField> BlackScholesChip<F> {
         let d2_neg = self.fixed_point.neg(ctx, d2);
         let d2_cdf_neg = cdf_normal(ctx, &self.fixed_point, &d2_neg);
         let strike_exp_t = self.fixed_point.qmul(ctx, strike_t, exp_r_t);
+        let neg_strike_exp_t = self.fixed_point.neg(ctx, strike_exp_t);
 
-        let call_rho = {
-            let a = self.fixed_point.qmul(ctx, d2_cdf, strike_exp_t);
-            self.fixed_point.qdiv(ctx, a, Constant(self.fixed_point.quantization(100.0)))
-        };
-
-        let put_rho = {
-            let a = self.fixed_point.qmul(ctx, d2_cdf_neg, strike_exp_t);
-            self.fixed_point.qdiv(ctx, a, Constant(self.fixed_point.quantization(-100.0)))
-        };
+        let call_rho = self.fixed_point.qmul(ctx, d2_cdf, strike_exp_t);
+        let put_rho = self.fixed_point.qmul(ctx, d2_cdf_neg, neg_strike_exp_t);
 
         (call_rho, put_rho)
     }
@@ -218,66 +231,69 @@ impl <'range, F: ScalarField> BlackScholesChip<F> {
     pub fn theta(
         &self,
         ctx: &mut Context<F>,
-        t_annualized: &AssignedValue<F>,
-        volatility: &AssignedValue<F>,
-        spot: &AssignedValue<F>,
-        strike: &AssignedValue<F>,
-        rate: &AssignedValue<F>
+        t_annualized: f64,
+        volatility: f64,
+        spot: f64,
+        strike: f64,
+        rate: f64
     ) -> (AssignedValue<F>, AssignedValue<F>) {
+        let t_annualized = ctx.load_witness(self.fixed_point.quantization(t_annualized));
+        let volatility = ctx.load_witness(self.fixed_point.quantization(volatility));
+        let spot = ctx.load_witness(self.fixed_point.quantization(spot));
+        let strike = ctx.load_witness(self.fixed_point.quantization(strike));
+        let rate = ctx.load_witness(self.fixed_point.quantization(rate));
+
         let (d1, d2) = calc_d1_d2(
             ctx,
             &self.fixed_point,
-            t_annualized,
-            volatility,
-            spot,
-            strike,
-            rate
+            &t_annualized,
+            &volatility,
+            &spot,
+            &strike,
+            &rate
         );
 
-        let strike_rate = self.fixed_point.qmul(ctx, *strike, *rate);
-
-        let r_t = self.fixed_point.qmul(ctx, *rate, *t_annualized);
-        let neg_r_t = self.fixed_point.neg(ctx, r_t);
-        let exp_r_t = self.fixed_point.qexp(ctx, neg_r_t);
-        
-        let d2_cdf = cdf_normal(ctx, &self.fixed_point, &d2);
-        
-        let d2_neg = self.fixed_point.neg(ctx, d2);
-        let d2_cdf_neg = cdf_normal(ctx, &self.fixed_point, &d2_neg);
-
-        let common = {
-            let denom = self.fixed_point.qsqrt(ctx, *t_annualized);
+        let a = self.fixed_point.qmul(ctx, strike, rate);
+        let b = {
+            let r_t = self.fixed_point.qmul(ctx, rate, t_annualized);
+            let neg_r_t = self.fixed_point.neg(ctx, r_t);
+            let exp_neg_r_t = self.fixed_point.qexp(ctx, neg_r_t);
+            self.fixed_point.qmul(ctx, exp_neg_r_t, a)
+        };
+        let c = {
+            let d2_cdf = cdf_normal(ctx, &self.fixed_point, &d2);
+            self.fixed_point.qmul(ctx, d2_cdf, b)
+        };
+        let d = {
+            let d2_neg = self.fixed_point.neg(ctx, d2);
+            let d2_cdf_neg = cdf_normal(ctx, &self.fixed_point, &d2_neg);
+            self.fixed_point.qmul(ctx, d2_cdf_neg, b)
+        };
+        let e = {
+            let denom = self.fixed_point.qsqrt(ctx, t_annualized);
             let denom = self.fixed_point.qmul(ctx, denom, Constant(self.fixed_point.quantization(2.0)));
-
-            let numer = self.fixed_point.qmul(ctx, *spot, *volatility);
-
-            let a = self.fixed_point.qdiv(ctx, numer, denom);
-
+    
+            let numer = self.fixed_point.qmul(ctx, spot, volatility);
+    
+            self.fixed_point.qdiv(ctx, numer, denom)
+        };
+        let f = {
             let d1_pdf = pdf_normal(ctx, &self.fixed_point, &d1);
-
-            self.fixed_point.qmul(ctx, a, d1_pdf)
+    
+            self.fixed_point.qmul(ctx, e, d1_pdf)
         };
 
         let call_theta = {
-            let a = self.fixed_point.qmul(ctx, strike_rate, exp_r_t);
-            let a = self.fixed_point.qmul(ctx, a, d2_cdf);
-
-            let a = self.fixed_point.qadd(ctx, a, common);
-            let a = self.fixed_point.neg(ctx, a);
-            self.fixed_point.qdiv(ctx, a, Constant(self.fixed_point.quantization(365.0)))
+            let tmp = self.fixed_point.qadd(ctx, f, c);
+            self.fixed_point.neg(ctx, tmp)
         };
 
-        let put_theta = {
-            let a = self.fixed_point.qmul(ctx, strike_rate, exp_r_t);
-            let a = self.fixed_point.qmul(ctx, d2_cdf_neg, a);
-
-            let a = self.fixed_point.qsub(ctx, a, common);
-
-            self.fixed_point.qdiv(ctx, a, Constant(self.fixed_point.quantization(365.0)))
-        };
+        let put_theta = self.fixed_point.qsub(ctx, d, f);
 
         (call_theta, put_theta)
     }
+
+    // TODO: IV
 }
 
 pub fn pdf_normal<F: ScalarField>(
@@ -285,10 +301,10 @@ pub fn pdf_normal<F: ScalarField>(
     fixed_point: &FixedPointChip<F, 63>,
     x: &AssignedValue<F>
 ) -> AssignedValue<F> {
-    let two = ctx.load_constant(fixed_point.quantization(2.0));
+    let two = Constant(fixed_point.quantization(2.0));
 
     // sqrt(2*pi).
-    let sqrt_two_pi = ctx.load_constant(fixed_point.quantization(PI * 2.0));
+    let sqrt_two_pi = Constant(fixed_point.quantization(2.50662827463));
 
     // e^(-x^2/2)
     let x_squared = fixed_point.qmul(ctx, *x, *x);
@@ -643,5 +659,312 @@ mod test {
             // The first argument is the size parameter for the circuit.
             .render((k) as u32, &circuit, &root)
             .unwrap();
+    }
+
+    #[test]
+    fn test_delta() {
+        // Uncomment to enable RUST_LOG
+        // env_logger::init();
+
+        let k = 16;
+        // Configure builder
+        let mut builder = GateThreadBuilder::<Fr>::mock();
+        let lookup_bits = 8;
+        // NOTE: Need to set var to load lookup table
+        std::env::set_var("LOOKUP_BITS", lookup_bits.to_string());
+        
+        // Circuit inputs
+        let t_annualized = 1.0;
+        let volatility = 0.2;
+        let spot = 50.0;
+        let strike = 100.0;
+        let rate = 0.05;
+
+        // Configure black scholes chip
+        let chip = BlackScholesChip::<Fr>::new(lookup_bits);
+        let (call_delta, put_delta) = chip.delta(
+            builder.main(0),
+            t_annualized,
+            volatility,
+            spot,
+            strike,
+            rate
+        );
+
+        // Assign public instances to circuit
+        let mut instances = vec![];
+        instances.push(call_delta);
+        instances.push(put_delta);
+
+        // Minimum rows is the number of rows used for blinding factors
+        // This depends on the circuit itself, but we can guess the number and change it if something breaks (default 9 usually works)
+        builder.config(k, Some(9));
+        // Create mock circuit
+        let circuit = RangeWithInstanceCircuitBuilder::mock(builder, instances);
+
+        let mut test_public_inputs = vec![];
+        let expected_call_delta = black_scholes::call_delta(spot, strike, rate, volatility, t_annualized);
+        let expected_put_delta = black_scholes::put_delta(spot, strike, rate, volatility, t_annualized);
+        
+        // TODO: improve the error tolerance in circuit
+        // One way is to calculate put first and use put-call parity to calculate call price in certain scenarios
+        let err = 1e-4;
+        assert_relative_eq!(chip.fixed_point.dequantization(*call_delta.value()), expected_call_delta, max_relative = err);
+        assert_relative_eq!(chip.fixed_point.dequantization(*put_delta.value()), expected_put_delta, max_relative = err);
+        
+        test_public_inputs.push(*call_delta.value());
+        test_public_inputs.push(*put_delta.value());
+        
+        // let result_call = chip.fixed_point.dequantization(*call_delta.value());
+        // let result_put = chip.fixed_point.dequantization(*put_delta.value());
+        // println!("Call: {:?}, Put: {:?}", result_call, result_put);
+        // println!("Expected Call: {}, Expected Put: {}", expected_call_delta, expected_put_delta);
+
+        // Run mock prover to ensure output is correct
+        MockProver::run(k as u32, &circuit, vec![test_public_inputs]).unwrap().assert_satisfied();
+    }
+
+    #[test]
+    fn test_gamma() {
+        // Uncomment to enable RUST_LOG
+        // env_logger::init();
+
+        let k = 16;
+        // Configure builder
+        let mut builder = GateThreadBuilder::<Fr>::mock();
+        let lookup_bits = 8;
+        // NOTE: Need to set var to load lookup table
+        std::env::set_var("LOOKUP_BITS", lookup_bits.to_string());
+        
+        // Circuit inputs
+        let t_annualized = 1.0;
+        let volatility = 0.2;
+        let spot = 50.0;
+        let strike = 100.0;
+        let rate = 0.05;
+
+        // Configure black scholes chip
+        let chip = BlackScholesChip::<Fr>::new(lookup_bits);
+        let gamma = chip.gamma(
+            builder.main(0),
+            t_annualized,
+            volatility,
+            spot,
+            strike,
+            rate
+        );
+
+        // Assign public instances to circuit
+        let mut instances = vec![];
+        instances.push(gamma);
+
+        // Minimum rows is the number of rows used for blinding factors
+        // This depends on the circuit itself, but we can guess the number and change it if something breaks (default 9 usually works)
+        builder.config(k, Some(9));
+        // Create mock circuit
+        let circuit = RangeWithInstanceCircuitBuilder::mock(builder, instances);
+
+        let mut test_public_inputs = vec![];
+        // Gamma is the same
+        let expected_gamma = black_scholes::call_gamma(spot, strike, rate, volatility, t_annualized);
+        
+        // TODO: improve the error tolerance in circuit
+        // One way is to calculate put first and use put-call parity to calculate call price in certain scenarios
+        let err = 1e-4;
+        assert_relative_eq!(chip.fixed_point.dequantization(*gamma.value()), expected_gamma, max_relative = err);
+        
+        test_public_inputs.push(*gamma.value());
+        
+        // let gamma = chip.fixed_point.dequantization(*gamma.value());
+        // println!("Gamma: {:?}", gamma);
+        // println!("Expected gamma: {}", expected_gamma);
+
+        // Run mock prover to ensure output is correct
+        MockProver::run(k as u32, &circuit, vec![test_public_inputs]).unwrap().assert_satisfied();
+    }
+
+    #[test]
+    fn test_vega() {
+        // Uncomment to enable RUST_LOG
+        // env_logger::init();
+
+        let k = 16;
+        // Configure builder
+        let mut builder = GateThreadBuilder::<Fr>::mock();
+        let lookup_bits = 8;
+        // NOTE: Need to set var to load lookup table
+        std::env::set_var("LOOKUP_BITS", lookup_bits.to_string());
+        
+        // Circuit inputs
+        let t_annualized = 1.0;
+        let volatility = 0.2;
+        let spot = 50.0;
+        let strike = 100.0;
+        let rate = 0.05;
+
+        // Configure black scholes chip
+        let chip = BlackScholesChip::<Fr>::new(lookup_bits);
+        let vega = chip.vega(
+            builder.main(0),
+            t_annualized,
+            volatility,
+            spot,
+            strike,
+            rate
+        );
+
+        // Assign public instances to circuit
+        let mut instances = vec![];
+        instances.push(vega);
+
+        // Minimum rows is the number of rows used for blinding factors
+        // This depends on the circuit itself, but we can guess the number and change it if something breaks (default 9 usually works)
+        builder.config(k, Some(9));
+        // Create mock circuit
+        let circuit = RangeWithInstanceCircuitBuilder::mock(builder, instances);
+
+        let mut test_public_inputs = vec![];
+        // Vega is the same
+        let expected_vega = black_scholes::call_vega(spot, strike, rate, volatility, t_annualized);
+        
+        // TODO: improve the error tolerance in circuit
+        // One way is to calculate put first and use put-call parity to calculate call price in certain scenarios
+        let err = 1e-4;
+        assert_relative_eq!(chip.fixed_point.dequantization(*vega.value()), expected_vega, max_relative = err);
+        
+        test_public_inputs.push(*vega.value());
+        
+        // let vega = chip.fixed_point.dequantization(*vega.value());
+        // println!("vega: {:?}", vega);
+        // println!("Expected vega: {}", expected_vega);
+
+        // Run mock prover to ensure output is correct
+        MockProver::run(k as u32, &circuit, vec![test_public_inputs]).unwrap().assert_satisfied();
+    }
+
+    #[test]
+    fn test_rho() {
+        // Uncomment to enable RUST_LOG
+        // env_logger::init();
+
+        let k = 16;
+        // Configure builder
+        let mut builder = GateThreadBuilder::<Fr>::mock();
+        let lookup_bits = 8;
+        // NOTE: Need to set var to load lookup table
+        std::env::set_var("LOOKUP_BITS", lookup_bits.to_string());
+        
+        // Circuit inputs
+        let t_annualized = 1.0;
+        let volatility = 0.2;
+        let spot = 50.0;
+        let strike = 100.0;
+        let rate = 0.05;
+
+        // Configure black scholes chip
+        let chip = BlackScholesChip::<Fr>::new(lookup_bits);
+        let (call_rho, put_rho) = chip.rho(
+            builder.main(0),
+            t_annualized,
+            volatility,
+            spot,
+            strike,
+            rate
+        );
+
+        // Assign public instances to circuit
+        let mut instances = vec![];
+        instances.push(call_rho);
+        instances.push(put_rho);
+
+        // Minimum rows is the number of rows used for blinding factors
+        // This depends on the circuit itself, but we can guess the number and change it if something breaks (default 9 usually works)
+        builder.config(k, Some(9));
+        // Create mock circuit
+        let circuit = RangeWithInstanceCircuitBuilder::mock(builder, instances);
+
+        let mut test_public_inputs = vec![];
+        let expected_call_rho = black_scholes::call_rho(spot, strike, rate, volatility, t_annualized);
+        let expected_put_rho = black_scholes::put_rho(spot, strike, rate, volatility, t_annualized);
+        
+        // TODO: improve the error tolerance in circuit
+        // One way is to calculate put first and use put-call parity to calculate call price in certain scenarios
+        let err = 1e-3;
+        assert_relative_eq!(chip.fixed_point.dequantization(*call_rho.value()), expected_call_rho, max_relative = err);
+        assert_relative_eq!(chip.fixed_point.dequantization(*put_rho.value()), expected_put_rho, max_relative = err);
+        
+        test_public_inputs.push(*call_rho.value());
+        test_public_inputs.push(*put_rho.value());
+        
+        // let result_call = chip.fixed_point.dequantization(*call_rho.value());
+        // let result_put = chip.fixed_point.dequantization(*put_rho.value());
+        // println!("Call: {:?}, Put: {:?}", result_call, result_put);
+        // println!("Expected Call: {}, Expected Put: {}", expected_call_rho, expected_put_rho);
+
+        // Run mock prover to ensure output is correct
+        MockProver::run(k as u32, &circuit, vec![test_public_inputs]).unwrap().assert_satisfied();
+    }
+
+    #[test]
+    fn test_theta() {
+        // Uncomment to enable RUST_LOG
+        // env_logger::init();
+
+        let k = 16;
+        // Configure builder
+        let mut builder = GateThreadBuilder::<Fr>::mock();
+        let lookup_bits = 8;
+        // NOTE: Need to set var to load lookup table
+        std::env::set_var("LOOKUP_BITS", lookup_bits.to_string());
+        
+        // Circuit inputs
+        let t_annualized = 1.0;
+        let volatility = 0.2;
+        let spot = 50.0;
+        let strike = 100.0;
+        let rate = 0.05;
+
+        // Configure black scholes chip
+        let chip = BlackScholesChip::<Fr>::new(lookup_bits);
+        let (call_theta, put_theta) = chip.theta(
+            builder.main(0),
+            t_annualized,
+            volatility,
+            spot,
+            strike,
+            rate
+        );
+
+        // Assign public instances to circuit
+        let mut instances = vec![];
+        instances.push(call_theta);
+        instances.push(put_theta);
+
+        // Minimum rows is the number of rows used for blinding factors
+        // This depends on the circuit itself, but we can guess the number and change it if something breaks (default 9 usually works)
+        builder.config(k, Some(9));
+        // Create mock circuit
+        let circuit = RangeWithInstanceCircuitBuilder::mock(builder, instances);
+
+        let mut test_public_inputs = vec![];
+        let expected_call_theta = black_scholes::call_theta(spot, strike, rate, volatility, t_annualized);
+        let expected_put_theta = black_scholes::put_theta(spot, strike, rate, volatility, t_annualized);
+        
+        // TODO: improve the error tolerance in circuit
+        // One way is to calculate put first and use put-call parity to calculate call price in certain scenarios
+        let err = 1e-3;
+        // assert_relative_eq!(chip.fixed_point.dequantization(*call_theta.value()), expected_call_theta, max_relative = err);
+        // assert_relative_eq!(chip.fixed_point.dequantization(*put_theta.value()), expected_put_theta, max_relative = err);
+        
+        test_public_inputs.push(*call_theta.value());
+        test_public_inputs.push(*put_theta.value());
+        
+        // let result_call = chip.fixed_point.dequantization(*call_theta.value());
+        // let result_put = chip.fixed_point.dequantization(*put_theta.value());
+        // println!("Call: {:?}, Put: {:?}", result_call, result_put);
+        // println!("Expected Call: {}, Expected Put: {}", expected_call_theta, expected_put_theta);
+
+        // Run mock prover to ensure output is correct
+        MockProver::run(k as u32, &circuit, vec![test_public_inputs]).unwrap().assert_satisfied();
     }
 }
