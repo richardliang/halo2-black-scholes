@@ -48,7 +48,7 @@ impl <'range, F: ScalarField> BlackScholesChip<F> {
         let strike = ctx.load_witness(self.fixed_point.quantization(strike));
         let rate = ctx.load_witness(self.fixed_point.quantization(rate));
 
-        let (d1, d2) = calc_d1_d2(
+        let (d1, d2) = self.calc_d1_d2(
             ctx, &self.fixed_point,
             &t_annualized,
             &volatility,
@@ -66,12 +66,12 @@ impl <'range, F: ScalarField> BlackScholesChip<F> {
         let strike_pv = self.fixed_point.qmul(ctx, strike, exp);
 
         let spot_nd1 = {
-            let a = cdf_normal(ctx, &self.fixed_point, &d1);
+            let a = self.cdf_normal(ctx, &self.fixed_point, &d1);
             self.fixed_point.qmul(ctx, spot, a)
         };
 
         let strike_nd2 = {
-            let a = cdf_normal(ctx, &self.fixed_point, &d2);
+            let a = self.cdf_normal(ctx, &self.fixed_point, &d2);
             self.fixed_point.qmul(ctx, strike_pv, a)
         };
 
@@ -100,7 +100,7 @@ impl <'range, F: ScalarField> BlackScholesChip<F> {
         let strike = ctx.load_witness(self.fixed_point.quantization(strike));
         let rate = ctx.load_witness(self.fixed_point.quantization(rate));
 
-        let (d1, _d2) = calc_d1_d2(
+        let (d1, _d2) = self.calc_d1_d2(
             ctx,
             &self.fixed_point,
             &t_annualized,
@@ -111,7 +111,7 @@ impl <'range, F: ScalarField> BlackScholesChip<F> {
         );
         let one = ctx.load_constant(self.fixed_point.quantization(1.0));
 
-        let call_delta = cdf_normal(ctx, &self.fixed_point, &d1);
+        let call_delta = self.cdf_normal(ctx, &self.fixed_point, &d1);
         let put_delta = self.fixed_point.qsub(ctx, call_delta, one);
 
         (call_delta, put_delta)
@@ -132,7 +132,7 @@ impl <'range, F: ScalarField> BlackScholesChip<F> {
         let strike = ctx.load_witness(self.fixed_point.quantization(strike));
         let rate = ctx.load_witness(self.fixed_point.quantization(rate));
 
-        let (d1, _d2) = calc_d1_d2(
+        let (d1, _d2) = self.calc_d1_d2(
             ctx,
             &self.fixed_point,
             &t_annualized,
@@ -142,7 +142,7 @@ impl <'range, F: ScalarField> BlackScholesChip<F> {
             &rate
         );
 
-        let pdf_d1 = pdf_normal(ctx, &self.fixed_point, &d1);
+        let pdf_d1 = self.pdf_normal(ctx, &self.fixed_point, &d1);
 
         let denom = {
             let a = self.fixed_point.qsqrt(ctx, t_annualized);
@@ -168,7 +168,7 @@ impl <'range, F: ScalarField> BlackScholesChip<F> {
         let strike = ctx.load_witness(self.fixed_point.quantization(strike));
         let rate = ctx.load_witness(self.fixed_point.quantization(rate));
 
-        let (d1, _d2) = calc_d1_d2(
+        let (d1, _d2) = self.calc_d1_d2(
             ctx,
             &self.fixed_point,
             &t_annualized,
@@ -178,7 +178,7 @@ impl <'range, F: ScalarField> BlackScholesChip<F> {
             &rate
         );
 
-        let pdf_d1 = pdf_normal(ctx, &self.fixed_point, &d1);
+        let pdf_d1 = self.pdf_normal(ctx, &self.fixed_point, &d1);
 
         let a = self.fixed_point.qsqrt(ctx, t_annualized);
         let a = self.fixed_point.qmul(ctx, a, spot);
@@ -200,7 +200,7 @@ impl <'range, F: ScalarField> BlackScholesChip<F> {
         let strike = ctx.load_witness(self.fixed_point.quantization(strike));
         let rate = ctx.load_witness(self.fixed_point.quantization(rate));
 
-        let (_d1, d2) = calc_d1_d2(
+        let (_d1, d2) = self.calc_d1_d2(
             ctx,
             &self.fixed_point,
             &t_annualized,
@@ -216,9 +216,9 @@ impl <'range, F: ScalarField> BlackScholesChip<F> {
         let neg_r_t = self.fixed_point.neg(ctx, r_t);
         let exp_r_t = self.fixed_point.qexp(ctx, neg_r_t);
 
-        let d2_cdf = cdf_normal(ctx, &self.fixed_point, &d2);
+        let d2_cdf = self.cdf_normal(ctx, &self.fixed_point, &d2);
         let d2_neg = self.fixed_point.neg(ctx, d2);
-        let d2_cdf_neg = cdf_normal(ctx, &self.fixed_point, &d2_neg);
+        let d2_cdf_neg = self.cdf_normal(ctx, &self.fixed_point, &d2_neg);
         let strike_exp_t = self.fixed_point.qmul(ctx, strike_t, exp_r_t);
         let neg_strike_exp_t = self.fixed_point.neg(ctx, strike_exp_t);
 
@@ -243,7 +243,7 @@ impl <'range, F: ScalarField> BlackScholesChip<F> {
         let strike = ctx.load_witness(self.fixed_point.quantization(strike));
         let rate = ctx.load_witness(self.fixed_point.quantization(rate));
 
-        let (d1, d2) = calc_d1_d2(
+        let (d1, d2) = self.calc_d1_d2(
             ctx,
             &self.fixed_point,
             &t_annualized,
@@ -261,12 +261,12 @@ impl <'range, F: ScalarField> BlackScholesChip<F> {
             self.fixed_point.qmul(ctx, exp_neg_r_t, a)
         };
         let c = {
-            let d2_cdf = cdf_normal(ctx, &self.fixed_point, &d2);
+            let d2_cdf = self.cdf_normal(ctx, &self.fixed_point, &d2);
             self.fixed_point.qmul(ctx, d2_cdf, b)
         };
         let d = {
             let d2_neg = self.fixed_point.neg(ctx, d2);
-            let d2_cdf_neg = cdf_normal(ctx, &self.fixed_point, &d2_neg);
+            let d2_cdf_neg = self.cdf_normal(ctx, &self.fixed_point, &d2_neg);
             self.fixed_point.qmul(ctx, d2_cdf_neg, b)
         };
         let e = {
@@ -278,7 +278,7 @@ impl <'range, F: ScalarField> BlackScholesChip<F> {
             self.fixed_point.qdiv(ctx, numer, denom)
         };
         let f = {
-            let d1_pdf = pdf_normal(ctx, &self.fixed_point, &d1);
+            let d1_pdf = self.pdf_normal(ctx, &self.fixed_point, &d1);
     
             self.fixed_point.qmul(ctx, e, d1_pdf)
         };
@@ -292,131 +292,134 @@ impl <'range, F: ScalarField> BlackScholesChip<F> {
 
         (call_theta, put_theta)
     }
+    
+    pub fn pdf_normal(
+        &self,
+        ctx: &mut Context<F>,
+        fixed_point: &FixedPointChip<F, 63>,
+        x: &AssignedValue<F>
+    ) -> AssignedValue<F> {
+        let two = Constant(fixed_point.quantization(2.0));
+    
+        // sqrt(2*pi).
+        let sqrt_two_pi = Constant(fixed_point.quantization(2.50662827463));
+    
+        // e^(-x^2/2)
+        let x_squared = fixed_point.qmul(ctx, *x, *x);
+        let neg_x_squared = fixed_point.neg(ctx, x_squared);
+        let neg_x_squared_div_two = fixed_point.qdiv(ctx, neg_x_squared, two);
+        let exp = fixed_point.qexp(ctx, neg_x_squared_div_two);
+    
+        // e^(-x^2/2) / sqrt(2*pi)
+        fixed_point.qdiv(ctx, exp, sqrt_two_pi)
+    }
+    
+    // Use Abramowitz and Stegun approximation
+    pub fn cdf_normal(
+        &self,
+        ctx: &mut Context<F>,
+        fixed_point: &FixedPointChip<F, 63>,
+        x: &AssignedValue<F>
+    ) -> AssignedValue<F> {
+        // Load magic numbers
+        let b1 = ctx.load_constant(fixed_point.quantization(0.319381530));
+        let b2 = ctx.load_constant(fixed_point.quantization(-0.356563782));
+        let b3 = ctx.load_constant(fixed_point.quantization(1.781477937));
+        let b4 = ctx.load_constant(fixed_point.quantization(-1.821255978));
+        let b5 = ctx.load_constant(fixed_point.quantization(1.330274429));
+        let p = ctx.load_constant(fixed_point.quantization(0.2316419));
+        let c2 = ctx.load_constant(fixed_point.quantization(0.3989423));
+    
+        let one = ctx.load_constant(fixed_point.quantization(1.0));
+        let two = ctx.load_constant(fixed_point.quantization(2.0));
+        
+        // abs(x)
+        let abs_x = fixed_point.qabs(ctx, *x);
+        // 1 / (1 + p * abs(x))
+        let t = {
+            let denominator = fixed_point.qmul(ctx, p, abs_x);
+            let denominator = fixed_point.qadd(ctx, one, denominator);
+            fixed_point.qdiv(ctx, one, denominator)
+        };
+        // c2 / exp((abs_x*abs_x) / 2);
+        let b = {
+            let denominator = fixed_point.qmul(ctx, abs_x, abs_x);
+            let denominator = fixed_point.qdiv(ctx, denominator, two);
+            let denominator = fixed_point.qexp(ctx, denominator);
+            fixed_point.qdiv(ctx, c2, denominator)
+        };
+        // 1 - b * ((((b5 * t + b4) * t + b3) * t + b2) * t + b1) * t
+        let n = {
+            let res = fixed_point.qmul(ctx, b5, t);
+            let res = fixed_point.qadd(ctx, b4, res);
+            let res = fixed_point.qmul(ctx, t, res);
+            let res = fixed_point.qadd(ctx, b3, res);
+            let res = fixed_point.qmul(ctx, t, res);
+            let res = fixed_point.qadd(ctx, b2, res);
+            let res = fixed_point.qmul(ctx, t, res);
+            let res = fixed_point.qadd(ctx, b1, res);
+            let res = fixed_point.qmul(ctx, t, res);
+            let res = fixed_point.qmul(ctx, res, b);
+            fixed_point.qsub(ctx, one, res)
+        };
+    
+        let neg_five = ctx.load_constant(fixed_point.quantization(-5.0));
+        let zero = ctx.load_constant(fixed_point.quantization(0.0));
+        let five = ctx.load_constant(fixed_point.quantization(5.0));
+        let num_bits = 126; // PRECISION_BITS * 2
+    
+        // Check if negative
+        let lt_zero = fixed_point.range_gate().is_less_than(ctx, *x, zero, num_bits);
+        let result = {
+            let a = fixed_point.qsub(ctx, one, n);
+            fixed_point.range_gate().gate().select(ctx, a, n, lt_zero)
+        };
+    
+        // Check less than -5.0
+        let lt_neg_five = fixed_point.range_gate().is_less_than(ctx, *x, neg_five, num_bits);
+        let result = fixed_point.range_gate().gate().select(ctx, Constant(fixed_point.quantization(0.0)), result, lt_neg_five);
+    
+        // Check greater than 5.0
+        let gt_five = fixed_point.range_gate().is_less_than(ctx, five, *x, num_bits);
+        fixed_point.range_gate().gate().select(ctx, Constant(fixed_point.quantization(1.0)), result, gt_five)
+    }
+    
+    // Returns the internal Black-Scholes coefficients.
+    pub fn calc_d1_d2(
+        &self,
+        ctx: &mut Context<F>,
+        fixed_point: &FixedPointChip<F, 63>,
+        t_annualized: &AssignedValue<F>,
+        volatility: &AssignedValue<F>,
+        spot: &AssignedValue<F>,
+        strike: &AssignedValue<F>,
+        rate: &AssignedValue<F>
+    ) -> (AssignedValue<F>, AssignedValue<F>) {
+        let two = ctx.load_constant(fixed_point.quantization(2.0));
+        let t_annualized_sqrt = fixed_point.qsqrt(ctx, *t_annualized);
+        // volatility * sqrt(t_annualized)
+        let denominator = fixed_point.qmul(ctx, *volatility, t_annualized_sqrt);
+    
+        // ( ln(spot / strike) + ( ( (volatility * volatility) / 2 + rate) * t_annualized) ) / (volatility * sqrt(t_annualized) )
+        let d1 = {
+            // ln(spot / strike)
+            let a = fixed_point.qdiv(ctx, *spot, *strike);
+            let ln_a = fixed_point.qlog(ctx, a);
+            // (volatility * volatility) / 2 + rate) * t_annualized
+            let numerator = fixed_point.qmul(ctx, *volatility, *volatility);
+            let numerator = fixed_point.qdiv(ctx, numerator, two);
+            let numerator = fixed_point.qadd(ctx, numerator, *rate);
+            let numerator = fixed_point.qmul(ctx, numerator, *t_annualized);
+            let numerator = fixed_point.qadd(ctx, numerator, ln_a);
+            fixed_point.qdiv(ctx, numerator, denominator)
+        };
+        
+        let d2 = fixed_point.qsub(ctx, d1, denominator);
+    
+        (d1, d2)
+    }
 
     // TODO: IV
-}
-
-pub fn pdf_normal<F: ScalarField>(
-    ctx: &mut Context<F>,
-    fixed_point: &FixedPointChip<F, 63>,
-    x: &AssignedValue<F>
-) -> AssignedValue<F> {
-    let two = Constant(fixed_point.quantization(2.0));
-
-    // sqrt(2*pi).
-    let sqrt_two_pi = Constant(fixed_point.quantization(2.50662827463));
-
-    // e^(-x^2/2)
-    let x_squared = fixed_point.qmul(ctx, *x, *x);
-    let neg_x_squared = fixed_point.neg(ctx, x_squared);
-    let neg_x_squared_div_two = fixed_point.qdiv(ctx, neg_x_squared, two);
-    let exp = fixed_point.qexp(ctx, neg_x_squared_div_two);
-
-    // e^(-x^2/2) / sqrt(2*pi)
-    fixed_point.qdiv(ctx, exp, sqrt_two_pi)
-}
-
-// Use Abramowitz and Stegun approximation
-pub fn cdf_normal<F: ScalarField>(
-    ctx: &mut Context<F>,
-    fixed_point: &FixedPointChip<F, 63>,
-    x: &AssignedValue<F>
-) -> AssignedValue<F> {
-    // Load magic numbers
-    let b1 = ctx.load_constant(fixed_point.quantization(0.319381530));
-    let b2 = ctx.load_constant(fixed_point.quantization(-0.356563782));
-    let b3 = ctx.load_constant(fixed_point.quantization(1.781477937));
-    let b4 = ctx.load_constant(fixed_point.quantization(-1.821255978));
-    let b5 = ctx.load_constant(fixed_point.quantization(1.330274429));
-    let p = ctx.load_constant(fixed_point.quantization(0.2316419));
-    let c2 = ctx.load_constant(fixed_point.quantization(0.3989423));
-
-    let one = ctx.load_constant(fixed_point.quantization(1.0));
-    let two = ctx.load_constant(fixed_point.quantization(2.0));
-    
-    // abs(x)
-    let abs_x = fixed_point.qabs(ctx, *x);
-    // 1 / (1 + p * abs(x))
-    let t = {
-        let denominator = fixed_point.qmul(ctx, p, abs_x);
-        let denominator = fixed_point.qadd(ctx, one, denominator);
-        fixed_point.qdiv(ctx, one, denominator)
-    };
-    // c2 / exp((abs_x*abs_x) / 2);
-    let b = {
-        let denominator = fixed_point.qmul(ctx, abs_x, abs_x);
-        let denominator = fixed_point.qdiv(ctx, denominator, two);
-        let denominator = fixed_point.qexp(ctx, denominator);
-        fixed_point.qdiv(ctx, c2, denominator)
-    };
-    // 1 - b * ((((b5 * t + b4) * t + b3) * t + b2) * t + b1) * t
-    let n = {
-        let res = fixed_point.qmul(ctx, b5, t);
-        let res = fixed_point.qadd(ctx, b4, res);
-        let res = fixed_point.qmul(ctx, t, res);
-        let res = fixed_point.qadd(ctx, b3, res);
-        let res = fixed_point.qmul(ctx, t, res);
-        let res = fixed_point.qadd(ctx, b2, res);
-        let res = fixed_point.qmul(ctx, t, res);
-        let res = fixed_point.qadd(ctx, b1, res);
-        let res = fixed_point.qmul(ctx, t, res);
-        let res = fixed_point.qmul(ctx, res, b);
-        fixed_point.qsub(ctx, one, res)
-    };
-
-    let neg_five = ctx.load_constant(fixed_point.quantization(-5.0));
-    let zero = ctx.load_constant(fixed_point.quantization(0.0));
-    let five = ctx.load_constant(fixed_point.quantization(5.0));
-    let num_bits = 126; // PRECISION_BITS * 2
-
-    // Check if negative
-    let lt_zero = fixed_point.range_gate().is_less_than(ctx, *x, zero, num_bits);
-    let result = {
-        let a = fixed_point.qsub(ctx, one, n);
-        fixed_point.range_gate().gate().select(ctx, a, n, lt_zero)
-    };
-
-    // Check less than -5.0
-    let lt_neg_five = fixed_point.range_gate().is_less_than(ctx, *x, neg_five, num_bits);
-    let result = fixed_point.range_gate().gate().select(ctx, Constant(fixed_point.quantization(0.0)), result, lt_neg_five);
-
-    // Check greater than 5.0
-    let gt_five = fixed_point.range_gate().is_less_than(ctx, five, *x, num_bits);
-    fixed_point.range_gate().gate().select(ctx, Constant(fixed_point.quantization(1.0)), result, gt_five)
-}
-
-// Returns the internal Black-Scholes coefficients.
-pub fn calc_d1_d2<F: ScalarField> (
-    ctx: &mut Context<F>,
-    fixed_point: &FixedPointChip<F, 63>,
-    t_annualized: &AssignedValue<F>,
-    volatility: &AssignedValue<F>,
-    spot: &AssignedValue<F>,
-    strike: &AssignedValue<F>,
-    rate: &AssignedValue<F>
-) -> (AssignedValue<F>, AssignedValue<F>) {
-    let two = ctx.load_constant(fixed_point.quantization(2.0));
-    let t_annualized_sqrt = fixed_point.qsqrt(ctx, *t_annualized);
-    // volatility * sqrt(t_annualized)
-    let denominator = fixed_point.qmul(ctx, *volatility, t_annualized_sqrt);
-
-    // ( ln(spot / strike) + ( ( (volatility * volatility) / 2 + rate) * t_annualized) ) / (volatility * sqrt(t_annualized) )
-    let d1 = {
-        // ln(spot / strike)
-        let a = fixed_point.qdiv(ctx, *spot, *strike);
-        let ln_a = fixed_point.qlog(ctx, a);
-        // (volatility * volatility) / 2 + rate) * t_annualized
-        let numerator = fixed_point.qmul(ctx, *volatility, *volatility);
-        let numerator = fixed_point.qdiv(ctx, numerator, two);
-        let numerator = fixed_point.qadd(ctx, numerator, *rate);
-        let numerator = fixed_point.qmul(ctx, numerator, *t_annualized);
-        let numerator = fixed_point.qadd(ctx, numerator, ln_a);
-        fixed_point.qdiv(ctx, numerator, denominator)
-    };
-    
-    let d2 = fixed_point.qsub(ctx, d1, denominator);
-
-    (d1, d2)
 }
 
 #[cfg(test)]
@@ -424,6 +427,11 @@ mod test {
     use super::*;
     use halo2_base::gates::builder::{GateThreadBuilder, RangeWithInstanceCircuitBuilder};
     use halo2_base::halo2_proofs::{halo2curves::bn256::Fr, dev::MockProver};
+
+    #[test]
+    fn test_pdf_normal() {
+        todo!();
+    }
 
     #[test]
     fn test_cdf_normal() {
@@ -439,8 +447,10 @@ mod test {
 
         // Test 1.0
         let x = 1.0;
+        // Configure black scholes chip
+        let chip = BlackScholesChip::<Fr>::new(lookup_bits);
         let x = ctx.load_witness(fixed_point.quantization(x));
-        let result = cdf_normal(
+        let result = chip.cdf_normal(
             ctx,
             &fixed_point,
             &x,
@@ -454,7 +464,7 @@ mod test {
         // Test -1.0
         let x = -1.0;
         let x = ctx.load_witness(fixed_point.quantization(x));
-        let result = cdf_normal(
+        let result = chip.cdf_normal(
             ctx,
             &fixed_point,
             &x,
@@ -468,7 +478,7 @@ mod test {
         // Test 6.0
         let x = 6.0;
         let x = ctx.load_witness(fixed_point.quantization(x));
-        let result = cdf_normal(
+        let result = chip.cdf_normal(
             ctx,
             &fixed_point,
             &x,
@@ -481,7 +491,7 @@ mod test {
         // Test -6.0
         let x = -6.0;
         let x = ctx.load_witness(fixed_point.quantization(x));
-        let result = cdf_normal(
+        let result = chip.cdf_normal(
             ctx,
             &fixed_point,
             &x,
@@ -526,7 +536,8 @@ mod test {
         let strike = ctx.load_witness(fixed_point.quantization(strike));
         let rate = ctx.load_witness(fixed_point.quantization(rate));
 
-        let result = calc_d1_d2(
+        let chip = BlackScholesChip::<Fr>::new(lookup_bits);
+        let result = chip.calc_d1_d2(
             ctx,
             &fixed_point,
             &t_annualized,
