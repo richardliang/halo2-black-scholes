@@ -32,3 +32,4 @@ criterion = "0.4"
 criterion-macro = "0.4"
 approx = "0.5.0"
 black_scholes = "0.10.1"
+halo2-scaffold = { git = "https://github.com/DCMMC/ZKFixedPointChip", version = "0.2.0" }

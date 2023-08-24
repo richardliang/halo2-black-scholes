@@ -6,7 +6,9 @@ use halo2_base::{
 };
 use itertools::Itertools;
 mod fixed_point;
-pub use fixed_point::*;
+use fixed_point::{FixedPointChip, FixedPointInstructions};
+// TODO: different halo2-lib version causes this error: the trait bound `F: From<[u64; 4]>` is not satisfied
+// use halo2_scaffold::gadget::fixed_point::{FixedPointChip, FixedPointInstructions};
 use std::marker::PhantomData;
 use black_scholes;
 
