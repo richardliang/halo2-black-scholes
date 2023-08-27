@@ -22,7 +22,6 @@ pub struct BlackScholesChip<F: ScalarField> {
     _marker: PhantomData<F>,
 }
 
-// TODO: Implement greeks
 impl <'range, F: ScalarField> BlackScholesChip<F> {
     pub fn new(lookup_bits: usize) -> Self {
         let fixed_point: FixedPointChip<F, 63> = FixedPointChip::<F, 63>::default(lookup_bits);
